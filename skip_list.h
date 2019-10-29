@@ -191,9 +191,40 @@ public:
     //C++11iterator insert(std::initializer_list<value_type> ilist);
     //C++11emplace
 
-    size_type erase(const value_type &value);
-    iterator  erase(const_iterator position);
-    iterator  erase(const_iterator first, const_iterator last);
+    template<typename VT>
+    size_type erase(const VT &value) {
+        node_type *node = impl.find(value);
+        if (impl.is_valid(node) && detail::equivalent(node->value, value, impl.less))
+        {
+            impl.remove(node);
+            return 1;
+        }
+        else
+        {
+            return 0;
+        }
+    }
+    iterator erase(const_iterator position) {
+        assert_that(position.get_impl() == &impl);
+        assert_that(impl.is_valid(position.get_node()));
+        node_type *node = const_cast<node_type*>(position.get_node());
+        node_type *next = node->next[0];
+        impl.remove(node);
+        return iterator(&impl, next);
+    }
+    iterator erase(const_iterator first, const_iterator last) {
+        assert_that(first.get_impl() == &impl);
+        assert_that(last.get_impl() == &impl);
+    
+        if (first != last)
+        {
+            node_type *first_node = const_cast<node_type*>(first.get_node());
+            node_type *last_node  = const_cast<node_type*>(last.get_node()->prev);
+            impl.remove_between(first_node, last_node);
+        }
+        
+        return iterator(&impl, const_cast<node_type*>(last.get_node()));
+    }
 
     void swap(skip_list &other) { impl.swap(other.impl); }
 
@@ -306,7 +337,20 @@ public:
     //======================================================================
     // Overridden operations
 
-    size_type erase(const value_type &value);
+    template<typename VT>
+    size_type erase(const VT &value) {
+        size_type count = 0;
+    
+        for (node_type *node = impl.find(value);
+             impl.is_valid(node) && detail::equivalent(node->value, value, impl.less);
+             node = impl.find(value))
+        {
+            impl.remove(node);
+            ++count;
+        }
+    
+        return count;
+    }
     iterator  erase(const_iterator first, const_iterator last);
     using parent_type::erase;
 
@@ -661,8 +705,7 @@ skip_list<T,C,A,LG,D>::insert(const_iterator hint, const value_type &value)
 
     if (impl.is_valid(hint_node) && detail::less_or_equal(value, hint_node->value, impl.less))
         return iterator(&impl,impl.insert(value)); // bad hint, resort to "normal" insert
-    else
-        return iterator(&impl,impl.insert(value,const_cast<node_type*>(hint_node)));
+    return iterator(&impl,impl.insert(value,const_cast<node_type*>(hint_node)));
 }
 
 //C++11iterator insert const_iterator pos, value_type &&value);
@@ -683,54 +726,7 @@ skip_list<T,C,A,LG,D>::insert(InputIterator first, InputIterator last)
 //C++11iterator insert(std::initializer_list<value_type> ilist);
 // C++11 emplace
 
-template <class T, class C, class A, class LG, bool D>
-inline
-typename skip_list<T,C,A,LG,D>::size_type
-skip_list<T,C,A,LG,D>::erase(const value_type &value)
-{
-    node_type *node = impl.find(value);
-    if (impl.is_valid(node) && detail::equivalent(node->value, value, impl.less))
-    {
-        impl.remove(node);
-        return 1;
-    }
-    else
-    {
-        return 0;
-    }
-}    
 
-template <class T, class C, class A, class LG, bool D>
-inline
-typename skip_list<T,C,A,LG,D>::iterator
-skip_list<T,C,A,LG,D>::erase(const_iterator position)
-{
-    assert_that(position.get_impl() == &impl);
-    assert_that(impl.is_valid(position.get_node()));
-    node_type *node = const_cast<node_type*>(position.get_node());
-    node_type *next = node->next[0];
-    impl.remove(node);
-    return iterator(&impl, next);
-}
-
-template <class T, class C, class A, class LG, bool D>
-inline
-typename skip_list<T,C,A,LG,D>::iterator
-skip_list<T,C,A,LG,D>::erase(const_iterator first, const_iterator last)
-{
-    assert_that(first.get_impl() == &impl);
-    assert_that(last.get_impl() == &impl);
-
-    if (first != last)
-    {
-        node_type *first_node = const_cast<node_type*>(first.get_node());
-        node_type *last_node  = const_cast<node_type*>(last.get_node()->prev);
-        impl.remove_between(first_node, last_node);
-    }
-    
-    return iterator(&impl, const_cast<node_type*>(last.get_node()));
-}
-  
 //==============================================================================
 #pragma mark lookup
 
@@ -851,24 +847,6 @@ multi_skip_list<T,C,A,LG>::equal_range(const value_type &value) const
 
 template <class T, class C, class A, class LG>
 inline
-typename multi_skip_list<T,C,A,LG>::size_type
-multi_skip_list<T,C,A,LG>::erase(const value_type &value)
-{
-    size_type count = 0;
-
-    for (node_type *node = impl.find(value);
-         impl.is_valid(node) && detail::equivalent(node->value, value, impl.less);
-         node = impl.find(value))
-    {
-        impl.remove(node);
-        ++count;
-    }
-
-    return count;
-}
-
-template <class T, class C, class A, class LG>
-inline
 typename multi_skip_list<T,C,A,LG>::iterator
 multi_skip_list<T,C,A,LG>::erase(const_iterator first, const_iterator last)
 {
@@ -944,8 +922,36 @@ public:
     const node_type *one_past_front() const                { return head; }
     node_type       *one_past_end()                        { return tail; }
     const node_type *one_past_end() const                  { return tail; }
-    node_type       *find(const value_type &value) const;
-    node_type       *find_first(const value_type &value) const;
+    template<typename VT>
+    node_type       *find(const VT &value) const {
+        // I could have an identical const and non-const overload,
+        // but this cast is simpler (and safe)
+        node_type *search = const_cast<node_type*>(head);
+    
+        for (unsigned l = levels; l--; )
+        {
+            while (search->next[l] != tail && detail::less_or_equal(search->next[l]->value, value, less))
+            {
+                search = search->next[l];
+            }
+        }
+        return search;
+    }
+    template<typename VT>
+    node_type       *find_first(const VT &value) const {
+        // only used in multi_skip_lists
+        impl_assert_that(D);
+    
+        node_type *node = find(value);
+        
+        while (node != head && detail::equivalent(node->prev->value, value, less))
+        {
+            node = node->prev;
+        }
+        if (node != tail && less(node->value, value)) node = node->next[0];
+    
+        return node;
+    }
     node_type       *insert(const value_type &value, node_type *hint = 0);
     void             remove(node_type *value);
     void             remove_all();
@@ -1058,26 +1064,6 @@ sl_impl<T,C,A,LG,D>::count(const value_type &value) const
     return count;
 }
 
-template <class T, class C, class A, class LG, bool D>
-inline
-typename sl_impl<T,C,A,LG,D>::node_type *
-sl_impl<T,C,A,LG,D>::find(const value_type &value) const
-{
-    // I could have an identical const and non-const overload,
-    // but this cast is simpler (and safe)
-    node_type *search = const_cast<node_type*>(head);
-
-    for (unsigned l = levels; l; )
-    {
-        --l;
-        while (search->next[l] != tail && detail::less_or_equal(search->next[l]->value, value, less))
-        {
-            search = search->next[l];
-        }
-    }
-    return search;
-}
-    
 template <class T, class C, class A, class LG, bool D>
 inline
 typename sl_impl<T,C,A,LG,D>::node_type *

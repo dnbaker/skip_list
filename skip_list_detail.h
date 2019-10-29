@@ -5,8 +5,9 @@
 
 #pragma once
 
-#include <cmath>      // for std::log
-#include <cstdlib>    // for std::rand
+#include <cmath>       // for std::log
+#include <cstdlib>     // for std::rand
+#include <type_traits> // for std::is_arithmetic, std::true_type, std::false_type
 
 //==============================================================================
 
@@ -129,15 +130,33 @@ namespace detail {
 
 #if 1
 
-template <typename Compare, typename T>
+template <typename Compare, typename T, typename T2>
 inline
-bool equivalent(const T &lhs, const T &rhs, const Compare &less)
-    { return !less(lhs, rhs) && !less(rhs, lhs); }
+bool equivalent(const T &lhs, const T2 &rhs, const Compare &less, std::false_type)
+    {
+        return !less(lhs, rhs) && !less(rhs, lhs);
+    }
+template <typename Compare, typename T, typename T2>
+inline
+bool equivalent(const T &lhs, const T2 &rhs, const Compare &less, std::true_type)
+    {
+        return lhs == rhs;
+    }
 
-template <typename Compare, typename T>
+
+template <typename Compare, typename T, typename T2>
 inline
-bool less_or_equal(const T &lhs, const T &rhs, const Compare &less)
+bool equivalent(const T &lhs, const T2 &rhs, const Compare &less)
+    {
+        using IT = std::integral_constant<bool, std::is_arithmetic<T>::value && std::is_arithmetic<T2>::value>;
+        return equivalent(lhs, rhs, less, IT());
+    }
+
+template <typename Compare, typename T, typename T2>
+inline
+bool less_or_equal(const T &lhs, const T2 &rhs, const Compare &less)
     { return !less(rhs, lhs); }
+
 
 #else
 

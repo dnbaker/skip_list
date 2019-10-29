@@ -17,6 +17,7 @@
 
 using goodliffe::skip_list;
 using goodliffe::detail::sl_impl;
+using goodliffe::detail::less_or_equal;
 
 TEST_CASE( "skip_list/smoketest", "" )
 {

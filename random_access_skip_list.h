@@ -7,6 +7,7 @@
 
 #include "skip_list_detail.h"
 
+#include <algorithm>  // for std::equal
 #include <memory>     // for std::allocator
 #include <functional> // for std::less
 #include <iterator>   // for std::reverse_iterator
